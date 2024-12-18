@@ -5,12 +5,7 @@ const dayjs = require('dayjs');
 // DATABASE_URL=postgres://neondb_owner:vSGQIaz8O1dn@ep-nameless-breeze-a1y4fg0s-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require
 // 创建一个新的 PostgreSQL 客户端实例
 const pool = new Pool({
-  connectionString: 'postgres://neondb_owner:vSGQIaz8O1dn@ep-nameless-breeze-a1y4fg0s-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require'
-  // user: 'neondb_owner',        // PostgreSQL 用户名
-  // host: 'ep-nameless-breeze-a1y4fg0s-pooler.ap-southeast-1.aws.neon.tech',            // PostgreSQL 服务器地址，通常是 localhost
-  // database: 'neondb',    // 要连接的数据库名
-  // password: 'vSGQIaz8O1dn',    // PostgreSQL 密码
-  // port: 5432,                   // PostgreSQL 默认端口
+  connectionString: process.env.DATABASE_URL
 });
 
 // 使用连接池获得一个客户端，并保持这个客户端连接
@@ -80,7 +75,7 @@ router.post('/submit-userinfo', async (req, res) => {
   if (!parsedDate.isValid()) {
     return res.status(400).json({ message: 'Invalid travel_date format.' });
   }
-  const formattedDate = parsedDate.format('YYYY-MM-DD');
+  const formattedDate = parsedDate.add(1,'day').format('YYYY-MM-DD');
   console.log(`'Received user info: name -  ${name}, email - ${email}, phone - ${phone}, travelers - ${travelers}, travel_date - ${formattedDate}, amount_paid - ${amount_paid}'`);
   // 检查是否有足量的商品可以售卖
   const client = await pool.connect();
@@ -93,7 +88,7 @@ router.post('/submit-userinfo', async (req, res) => {
   const vacant = result.rows[0].vacant;
   if (vacant < 0) { // insufficient stock
     await client.query('ROLLBACK');
-    return res.status(400).json({ message: 'date:' + formattedDate + '  Oops. It seems somebody else has just complete purchased our product on the same day. And there isn\'t enough vacancies for your purchase.' });
+    return res.status(400).json({ message: 'Oops. It seems somebody else has just complete purchased our product on the same day. And there isn\'t enough vacancies for your purchase.' });
   }
   // there is sufficient stock
   await client.query("insert into userinfo (name, age, email, phone, travel_date, travelers, route, paid, amount_paid, transaction_time) values('" + name + "',null, '" + email + "', '" + phone + "', '"+ formattedDate +"' ," + travelers + ", 'xujiahui-jingan', true, " + amount_paid + ",now());");
