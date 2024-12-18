@@ -93,7 +93,7 @@ router.post('/submit-userinfo', async (req, res) => {
   const vacant = result.rows[0].vacant;
   if (vacant < 0) { // insufficient stock
     await client.query('ROLLBACK');
-    return res.status(400).json({ message: 'vacant:' + vacant + '  Oops. It seems somebody else has just complete purchased our product on the same day. And there isn\'t enough vacancies for your purchase.' });
+    return res.status(400).json({ message: 'date:' + formattedDate + '  Oops. It seems somebody else has just complete purchased our product on the same day. And there isn\'t enough vacancies for your purchase.' });
   }
   // there is sufficient stock
   await client.query("insert into userinfo (name, age, email, phone, travel_date, travelers, route, paid, amount_paid, transaction_time) values('" + name + "',null, '" + email + "', '" + phone + "', '"+ formattedDate +"' ," + travelers + ", 'xujiahui-jingan', true, " + amount_paid + ",now());");
