@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const { Pool } = require('pg');
 const dayjs = require('dayjs');
-// DATABASE_URL=postgres://neondb_owner:vSGQIaz8O1dn@ep-nameless-breeze-a1y4fg0s-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require
 // 创建一个新的 PostgreSQL 客户端实例
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL
