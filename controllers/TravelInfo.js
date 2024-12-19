@@ -4,7 +4,11 @@ const { Pool } = require('pg');
 const dayjs = require('dayjs');
 // 创建一个新的 PostgreSQL 客户端实例
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL
+  user: 'postgres',        // PostgreSQL 用户名
+  host: 'localhost',            // PostgreSQL 服务器地址，通常是 localhost
+  database: 'sinomad',    // 要连接的数据库名
+  password: '123456',    // PostgreSQL 密码
+  port: 5432,                   // PostgreSQL 默认端口
 });
 
 // 使用连接池获得一个客户端，并保持这个客户端连接
