@@ -48,7 +48,7 @@ router.get('/available-dates-n-vacancies', async (req, res) => {
   if (!route || !routeMaxPeople.get(route)) {
     return res.status(400).json({ error: 'Invalid route' });
   }
-  const availableDateNVacancies = await connectAndQuery("select departure_time, (" + routeMaxPeople.get(route) + " - num_of_travelers) as vacant_slots from bookinginfo where route = 'xujiahui-jingan' and num_of_travelers < " + routeMaxPeople.get(route) + " and departure_time <= (now() + interval '1 month')::date;");
+  const availableDateNVacancies = await connectAndQuery("select departure_time, (" + routeMaxPeople.get(route) + " - num_of_travelers) as vacant_slots from bookinginfo where route = '" + route + "' and num_of_travelers < " + routeMaxPeople.get(route) + " and departure_time <= (now() + interval '1 month')::date and departure_time >= now();");
   const departureTimes = availableDateNVacancies.rows.map(row => row.departure_time);
   const vacantSlots = availableDateNVacancies.rows.map(row => row.vacant_slots);
   res.json({
@@ -64,7 +64,7 @@ router.post('/submit-booking', async (req, res) => {
   if (!date || !numberOfTravelers) {
     return res.status(400).json({ message: 'Date and number of travelers are required.' });
   }
-  const result = await connectAndQuery("select (" + routeMaxPeople.get(route) + "-num_of_travelers-" + numberOfTravelers + ") as vacant from bookinginfo where route='xujiahui-jingan' and departure_time='" + date + "'");
+  const result = await connectAndQuery("select (" + routeMaxPeople.get(route) + "-num_of_travelers-" + numberOfTravelers + ") as vacant from bookinginfo where route='" + route + "' and departure_time='" + date + "'");
   const vacant = result.rows[0].vacant;
   if (vacant < 0) { // insufficient stock
     return res.status(404).json({ message: 'Product not found for the selected date.' });
@@ -89,7 +89,7 @@ router.post('/submit-userinfo', async (req, res) => {
   // 检查是否有足量的商品可以售卖
   const client = await pool.connect();
   client.query("BEGIN");
-  const result = await client.query("select (" + routeMaxPeople.get(route) + " - num_of_travelers - " + travelers + ") as vacant from bookinginfo where route='xujiahui-jingan' and departure_time='" + formattedDate + "'");
+  const result = await client.query("select (" + routeMaxPeople.get(route) + " - num_of_travelers - " + travelers + ") as vacant from bookinginfo where route='" + route + "' and departure_time='" + formattedDate + "'");
   if (result.rows.length === 0) {
     await client.query('ROLLBACK');
     return res.status(404).json({ message: 'Product not found for the selected date.' });
@@ -100,8 +100,8 @@ router.post('/submit-userinfo', async (req, res) => {
     return res.status(400).json({ message: 'Oops. It seems somebody else has just complete purchased our product on the same day. And there isn\'t enough vacancies for your purchase.' });
   }
   // there is sufficient stock
-  await client.query("insert into userinfo (order_number, name, age, email, region_code, phone, travel_date, travelers, route, paid, amount_paid, transaction_time) values('" + order_number + "','" + name + "',null, '" + email + "', '" + region_code + "','" + phone + "', '"+ formattedDate +"' ," + travelers + ", 'xujiahui-jingan', true, " + amount_paid + ",now());");
-  await client.query("update bookinginfo set num_of_travelers = num_of_travelers + " + travelers + " where departure_time='"+ formattedDate +"' and route = 'xujiahui-jingan'");
+  await client.query("insert into userinfo (order_number, name, age, email, region_code, phone, travel_date, travelers, route, paid, amount_paid, transaction_time) values('" + order_number + "','" + name + "',null, '" + email + "', '" + region_code + "','" + phone + "', '"+ formattedDate +"' ," + travelers + ", '" + route + "', true, " + amount_paid + ",now());");
+  await client.query("update bookinginfo set num_of_travelers = num_of_travelers + " + travelers + " where departure_time='"+ formattedDate +"' and route = '" + route + "'");
   await client.query("COMMIT");
   return res.status(200).json({ message: 'Transaction successful' });
 });
