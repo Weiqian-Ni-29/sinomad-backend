@@ -13,7 +13,8 @@ const pool = new Pool({
 
 const routeMaxPeople = new Map([
   ['xujiahui-jingan', 10],
-  ['bund', 6]
+  ['bund', 6],
+  ['jingze', 5]
   ]
 );
 
