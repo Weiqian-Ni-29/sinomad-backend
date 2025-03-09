@@ -1,116 +1,203 @@
 const express = require('express');
 const router = express.Router();
-const { Pool } = require('pg');
+const pool = require('./DB');
 const dayjs = require('dayjs');
-// 创建一个新的 PostgreSQL 客户端实例
-const pool = new Pool({
-  user: 'postgres',        // PostgreSQL 用户名
-  host: 'localhost',            // PostgreSQL 服务器地址，通常是 localhost
-  database: 'sinomad',    // 要连接的数据库名
-  password: '123456',    // PostgreSQL 密码
-  port: 5432,                   // PostgreSQL 默认端口
-});
 
-const routeMaxPeople = new Map([
-  ['xujiahui-jingan', 10],
-  ['bund', 6],
-  ['jingze', 5],
-  ['xlb', 8],
-  ['dumpling',5]
-  ]
-);
+// 改进1: 将路线配置移至环境变量
+const ROUTE_CONFIG = JSON.parse(process.env.ROUTE_MAX_PEOPLE || '{}');
+const routeMaxPeople = new Map(Object.entries(ROUTE_CONFIG));
 
-// 使用连接池获得一个客户端，并保持这个客户端连接
-let client;
+// 改进2: SQL 语句集中管理
+const SQL = {
+  GET_AVAILABILITY: `
+    SELECT departure_time, ($2 - num_of_travelers) AS vacant_slots
+    FROM bookinginfo 
+    WHERE route = $1 
+      AND departure_time BETWEEN NOW() AND NOW() + INTERVAL '1 month'
+      AND num_of_travelers < $2 
+  `,
 
-async function connectAndQuery(query) {
-  if (!client) {
-    // 如果还没有客户端连接，则获取一个连接
-    client = await pool.connect();
-    console.log('Connected to PostgreSQL');
-  }
+  CHECK_STOCK: `
+    SELECT ($4 - num_of_travelers - $1) AS vacant
+    FROM bookinginfo
+    WHERE route = $2 AND departure_time = $3
+  `,
 
-  try {
-    // 执行查询
-    const res = await client.query(query);
-    return res;
-  } catch (err) {
-    console.error('Error executing query', err.stack);
-    return null;
-  }
-}
+  CREATE_ORDER: `
+    INSERT INTO userinfo (
+      order_number, name, email, region_code, phone, 
+      travel_date, travelers, route, paid, amount_paid, transaction_time
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, $9, NOW())
+    RETURNING *
+  `,
 
-async function closeConnection() {
-  if (client) {
-    // 关闭连接
-    await client.release();
-    client = null;
-    console.log('Connection closed');
-  }
-}
+  UPDATE_BOOKING: `
+    UPDATE bookinginfo 
+    SET num_of_travelers = num_of_travelers + $1
+    WHERE route = $2 AND departure_time = $3
+  `
+};
 
-// 获取可选日期集合
-router.get('/available-dates-n-vacancies', async (req, res) => {
-  const { route } = req.query;
-  if (!route || !routeMaxPeople.get(route)) {
-    return res.status(400).json({ error: 'Invalid route' });
-  }
-  const availableDateNVacancies = await connectAndQuery("select departure_time, (" + routeMaxPeople.get(route) + " - num_of_travelers) as vacant_slots from bookinginfo where route = '" + route + "' and num_of_travelers < " + routeMaxPeople.get(route) + " and departure_time <= (now() + interval '1 month')::date and departure_time >= now();");
-  const departureTimes = availableDateNVacancies.rows.map(row => row.departure_time);
-  const vacantSlots = availableDateNVacancies.rows.map(row => row.vacant_slots);
-  res.json({
-    departureTimes: departureTimes,
-    vacantSlots: vacantSlots
+// 改进3: 统一错误处理中间件
+const handleError = (res, error, message = 'Server error') => {
+  console.error(`[${new Date().toISOString()}] Error: ${error.message}`);
+  res.status(500).json({ 
+    success: false,
+    error: process.env.NODE_ENV === 'development' ? message : error.message 
   });
+};
+
+// 改进4: 日期处理工具函数
+const parseAndFormatDate = (dateInput) => {
+  try {
+    const parsed = dayjs(dateInput.$d || dateInput);
+    if (!parsed.isValid()) throw new Error('Invalid date format');
+    return parsed.format('YYYY-MM-DD');
+  } catch (error) {
+    throw new Error(`Date processing failed: ${error.message}`);
+  }
+};
+
+router.get('/available-dates-n-vacancies', async (req, res) => {
+  try {
+    const { route } = req.query;
+    
+    // 参数验证增强
+    if (!route || !routeMaxPeople.has(route)) {
+      return res.status(400).json({ 
+        error: 'Invalid route parameter',
+        validRoutes: Array.from(routeMaxPeople.keys()) 
+      });
+    }
+
+    // 从配置获取 maxPeople
+    const maxPeople = routeMaxPeople.get(route);
+    if (typeof maxPeople !== 'number' || maxPeople <= 0) {
+      return res.status(500).json({ 
+        error: 'Invalid maxPeople configuration' 
+      });
+    }
+
+    // 修改点4：传递两个参数（route 和 maxPeople）
+    const { rows } = await pool.query(SQL.GET_AVAILABILITY, [route, maxPeople]);
+    
+    // 优化数据结构处理
+    const result = {
+      departureTimes: rows.map(r => r.departure_time),
+      vacantSlots: rows.map(r => r.vacant_slots),
+      maxCapacity: maxPeople  // 新增：返回最大容量信息
+    };
+
+    res.json(result);
+  } catch (error) {
+    handleError(res, error, 'Failed to fetch availability');
+  }
 });
 
-// 提交选定日期
+// 提交预定
 router.post('/submit-booking', async (req, res) => {
-  const { date, numberOfTravelers, route } = req.body;
+  try {
+    const { date, numberOfTravelers, route } = req.body;
+    
+    if (!date || !numberOfTravelers || !route) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
 
-  if (!date || !numberOfTravelers) {
-    return res.status(400).json({ message: 'Date and number of travelers are required.' });
-  }
-  const result = await connectAndQuery("select (" + routeMaxPeople.get(route) + "-num_of_travelers-" + numberOfTravelers + ") as vacant from bookinginfo where route='" + route + "' and departure_time='" + date + "'");
-  const vacant = result.rows[0].vacant;
-  if (vacant < 0) { // insufficient stock
-    return res.status(404).json({ message: 'Product not found for the selected date.' });
-  }
+    // 改进6: 事务封装
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      
+      // 检查库存
+      const stockCheck = await client.query(SQL.CHECK_STOCK, [
+        numberOfTravelers, 
+        route, 
+        date,
+        routeMaxPeople.get(route)
+      ]);
+      
+      if (stockCheck.rows[0]?.vacant < 0) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'Insufficient vacancies' });
+      }
 
-  console.log(`Received booking: Date - ${date}, Number of Travelers - ${numberOfTravelers}`);
-  res.json({ message: 'Booking received successfully.' });
+      // 记录预定（示例，根据实际需求补充）
+      console.log(`Booking received: ${date} - ${numberOfTravelers} travelers`);
+      
+      await client.query('COMMIT');
+      res.json({ success: true });
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    handleError(res, error, 'Booking submission failed');
+  }
 });
 
-// 用户个人信息
+// 用户信息提交
 router.post('/submit-userinfo', async (req, res) => {
-  const { order_number, name, email, phone, region_code, amount_paid, travelers, travel_date, route } = req.body;
-  if (!name || !email || !phone || !amount_paid || !travelers || !travel_date) {
-    return res.status(400).json({ message: 'some vital data fields of the transaction are missing.' });
-  }
-  const parsedDate = dayjs(travel_date.$d);
-  if (!parsedDate.isValid()) {
-    return res.status(400).json({ message: 'Invalid travel_date format.' });
-  }
-  const formattedDate = parsedDate.add(1,'day').format('YYYY-MM-DD');
-  console.log(`'Received user info: name -  ${name}, email - ${email}, phone - ${phone}, travelers - ${travelers}, travel_date - ${formattedDate}, amount_paid - ${amount_paid}'`);
-  // 检查是否有足量的商品可以售卖
   const client = await pool.connect();
-  client.query("BEGIN");
-  const result = await client.query("select (" + routeMaxPeople.get(route) + " - num_of_travelers - " + travelers + ") as vacant from bookinginfo where route='" + route + "' and departure_time='" + formattedDate + "'");
-  if (result.rows.length === 0) {
+  try {
+    await client.query('BEGIN');
+    
+    const { 
+      order_number, name, email, phone, region_code, 
+      amount_paid, travelers, travel_date, route 
+    } = req.body;
+
+    // 改进7: 参数验证中间件
+    const requiredFields = [
+      'order_number', 'name', 'email', 'phone', 
+      'amount_paid', 'travelers', 'travel_date', 'route'
+    ];
+    
+    const missing = requiredFields.filter(field => !req.body[field]);
+    if (missing.length > 0) {
+      return res.status(400).json({ 
+        error: `Missing fields: ${missing.join(', ')}` 
+      });
+    }
+
+    const formattedDate = parseAndFormatDate(travel_date);
+
+    // 库存检查
+    const stockResult = await client.query(SQL.CHECK_STOCK, [
+      travelers,        // $1
+      route,            // $2
+      formattedDate,    // $3
+      routeMaxPeople.get(route) // $4 新增参数
+    ]);
+    
+    if (stockResult.rows[0]?.vacant < 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Insufficient stock' });
+    }
+
+    // 创建订单
+    const orderResult = await client.query(SQL.CREATE_ORDER, [
+      order_number, name, email, region_code, phone,
+      formattedDate, travelers, route, amount_paid
+    ]);
+    
+    // 更新库存
+    await client.query(SQL.UPDATE_BOOKING, [
+      travelers, 
+      route, 
+      formattedDate
+    ]);
+    
+    await client.query('COMMIT');
+    
+    res.json({ 
+      success: true,
+      order: orderResult.rows[0]
+    });
+  } catch (error) {
     await client.query('ROLLBACK');
-    return res.status(404).json({ message: 'Product not found for the selected date.' });
+    handleError(res, error, 'Order processing failed');
+  } finally {
+    client.release();
   }
-  const vacant = result.rows[0].vacant;
-  if (vacant < 0) { // insufficient stock
-    await client.query('ROLLBACK');
-    return res.status(400).json({ message: 'Oops. It seems somebody else has just complete purchased our product on the same day. And there isn\'t enough vacancies for your purchase.' });
-  }
-  // there is sufficient stock
-  await client.query("insert into userinfo (order_number, name, age, email, region_code, phone, travel_date, travelers, route, paid, amount_paid, transaction_time) values('" + order_number + "','" + name + "',null, '" + email + "', '" + region_code + "','" + phone + "', '"+ formattedDate +"' ," + travelers + ", '" + route + "', true, " + amount_paid + ",now());");
-  await client.query("update bookinginfo set num_of_travelers = num_of_travelers + " + travelers + " where departure_time='"+ formattedDate +"' and route = '" + route + "'");
-  await client.query("COMMIT");
-  return res.status(200).json({ message: 'Transaction successful' });
 });
 
 module.exports = router;

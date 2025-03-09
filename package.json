@@ -11,6 +11,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "alipay-sdk": "^4.13.0",
     "body-parser": "^1.20.3",
     "cors": "^2.8.5",
     "dayjs": "^1.11.13",
