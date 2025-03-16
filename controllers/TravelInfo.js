@@ -27,7 +27,7 @@ const SQL = {
     INSERT INTO userinfo (
       order_number, name, email, region_code, phone, 
       travel_date, travelers, route, paid, amount_paid, transaction_time
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, $9, NOW())
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL, $9, NOW())
     RETURNING *
   `,
 
@@ -35,6 +35,36 @@ const SQL = {
     UPDATE bookinginfo 
     SET num_of_travelers = num_of_travelers + $1
     WHERE route = $2 AND departure_time = $3
+  `,
+
+  GET_ORDER_INFO: `
+    SELECT order_number, name, region_code, phone, email, travelers, travel_date
+    from userinfo
+    where order_number = $1
+  `,
+
+  SET_STATUS_PAYED: `
+    UPDATE userinfo
+    SET paid=true
+    where order_number = $1
+  `,
+
+  GET_OVERTIME_UNPAYED_ORDERS: `
+    SELECT travelers, route, travel_date
+    FROM userinfo
+    WHERE paid is NULL and transaction_time < NOW() - INTERVAL '15 minutes'
+  `,
+
+  SET_OVERTIME_PAYMENT_STATUS_TO_FALSE: `
+    UPDATE userinfo
+    set paid = false
+    where paid is NULL and transaction_time < NOW() - INTERVAL '15 minutes'
+  `,
+
+  REMOVE_OVERTIME_BOOKING_FROM_BOOKINGINFO_TABLE: `
+    UPDATE bookinginfo
+    set num_of_travelers = num_of_travelers - $1
+    where route = $2 and departure_time = $3
   `
 };
 
@@ -134,6 +164,25 @@ router.post('/submit-booking', async (req, res) => {
   }
 });
 
+// 查询订单信息，顺便把订单paid信息置为true
+router.get('/orders/:orderNumber', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const orderNumber = req.params.orderNumber;
+    await client.query(SQL.SET_STATUS_PAYED, [
+      orderNumber
+    ]);
+    const orderInfo = await client.query(SQL.GET_ORDER_INFO, [
+      orderNumber
+    ]);
+    res.json({orderInfo: orderInfo.rows[0]});
+  } catch (error) {
+    handleError(res, error, 'Failed to update/retrive booking status');
+  } finally {
+    client.release();
+  }
+});
+
 // 用户信息提交
 router.post('/submit-userinfo', async (req, res) => {
   const client = await pool.connect();
@@ -199,5 +248,28 @@ router.post('/submit-userinfo', async (req, res) => {
     client.release();
   }
 });
+
+// 每分钟执行一次，去数据库中读取超时15分钟的订单，并从bookingInfo里面减去
+setInterval(async () => {
+  const client = await pool.connect();
+  try {
+    const result = await client.query(SQL.GET_OVERTIME_UNPAYED_ORDERS);
+    const timeout_orders = result.rows;
+    for (let i = 0; i < timeout_orders.length; i++) {
+      const travelers = timeout_orders[i].travelers;
+      const route = timeout_orders[i].route;
+      const travel_date = timeout_orders[i].travel_date;
+      await client.query(SQL.REMOVE_OVERTIME_BOOKING_FROM_BOOKINGINFO_TABLE, [
+        travelers, route, travel_date
+      ]);
+    }
+    await client.query(SQL.SET_OVERTIME_PAYMENT_STATUS_TO_FALSE)
+  } catch (error) {
+    throw error;
+  } finally {
+    client.release();
+  }
+}, 60000);
+
 
 module.exports = router;
