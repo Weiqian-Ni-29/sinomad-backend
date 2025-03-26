@@ -5,7 +5,9 @@ const dayjs = require('dayjs');
 
 // 改进1: 将路线配置移至环境变量
 const ROUTE_CONFIG = JSON.parse(process.env.ROUTE_MAX_PEOPLE || '{}');
+const ROUTE_STARTUP = JSON.parse(process.env.ROUTE_STARTUP_NUM || '{}');
 const routeMaxPeople = new Map(Object.entries(ROUTE_CONFIG));
+const routeStartUpNum = new Map(Object.entries(ROUTE_STARTUP));
 
 // 改进2: SQL 语句集中管理
 const SQL = {
@@ -111,11 +113,14 @@ router.get('/available-dates-n-vacancies', async (req, res) => {
     // 修改点4：传递两个参数（route 和 maxPeople）
     const { rows } = await pool.query(SQL.GET_AVAILABILITY, [route, maxPeople]);
     
+    const startUpNum = routeStartUpNum.get(route);
+
     // 优化数据结构处理
     const result = {
       departureTimes: rows.map(r => r.departure_time),
       vacantSlots: rows.map(r => r.vacant_slots),
-      maxCapacity: maxPeople  // 新增：返回最大容量信息
+      maxCapacity: maxPeople,
+      startUpNum: startUpNum
     };
 
     res.json(result);
