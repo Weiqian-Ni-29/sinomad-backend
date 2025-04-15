@@ -28,8 +28,8 @@ const SQL = {
   CREATE_ORDER: `
     INSERT INTO userinfo (
       order_number, name, email, region_code, phone, 
-      travel_date, travelers, route, paid, amount_paid, transaction_time
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL, $9, NOW())
+      travel_date, travelers, route, paid, amount_paid, transaction_time, comment
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL, $9, NOW(), $10)
     RETURNING *
   `,
 
@@ -196,7 +196,7 @@ router.post('/submit-userinfo', async (req, res) => {
     
     const { 
       order_number, name, email, phone, region_code, 
-      amount_paid, travelers, travel_date, route 
+      amount_paid, travelers, travel_date, route, comment
     } = req.body;
 
     // 改进7: 参数验证中间件
@@ -230,7 +230,7 @@ router.post('/submit-userinfo', async (req, res) => {
     // 创建订单
     const orderResult = await client.query(SQL.CREATE_ORDER, [
       order_number, name, email, region_code, phone,
-      formattedDate, travelers, route, amount_paid
+      formattedDate, travelers, route, amount_paid, comment
     ]);
     
     // 更新库存
