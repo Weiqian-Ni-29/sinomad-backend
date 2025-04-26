@@ -39,7 +39,7 @@ router.post('/payment/notify', async (req, res) => {
       console.log("订单支付成功，订单号:", out_trade_no);
       // 4. 更新数据库状态
       const client = await pool.connect();
-      await client.query(SQL.SET_STATUS_PAYED, [
+      await client.query(SET_STATUS_PAYED, [
         out_trade_no
       ]);
       res.send('success');
