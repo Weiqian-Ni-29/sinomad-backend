@@ -17,7 +17,7 @@ const alipaySdk = new AlipaySdk({
 router.post('/payment/notify', async (req, res) => {
   console.log("notify triggered")
   try {
-    const result = await alipaySdk.checkNotify(req.body);
+    const result = await alipaySdk.checkNotifySign(req.body);
     console.log("res:" + result);
     if (result.trade_status === 'TRADE_SUCCESS') {
       // 更新数据库订单状态
