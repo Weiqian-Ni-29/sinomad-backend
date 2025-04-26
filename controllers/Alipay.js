@@ -12,6 +12,33 @@ const alipaySdk = new AlipaySdk({
   signType:'RSA2'
 });
 
+
+// 支付宝异步通知（需公网可访问）
+router.post('/payment/notify', async (req, res) => {
+  console.log("notify triggered")
+  try {
+    const result = await alipaySdk.checkNotify(req.body);
+    if (result.trade_status === 'TRADE_SUCCESS') {
+      // 更新数据库订单状态
+      const {
+        out_trade_no,    // 商户订单号（你系统生成的订单号）
+        trade_no,        // 支付宝交易号
+        total_amount,    // 订单金额
+        buyer_id,        // 买家支付宝用户ID
+        seller_id,       // 卖家支付宝用户ID
+        invoice_amount   // 开票金额
+      } = result;
+      console.log(result);
+      res.send('success'); // 必须返回success告知支付宝已处理
+    } else {
+      console.log("payment failed!");
+      res.send('failure');
+    }
+  } catch (error) {
+    res.status(500).send('error');
+  }
+});
+
 router.post('/payment/:platform', async (req, res) => {
     try {
         const { 
@@ -54,32 +81,6 @@ router.post('/payment/:platform', async (req, res) => {
             error: error.message || 'Payment processing failed'
         });
     }
-});
-
-// 支付宝异步通知（需公网可访问）
-router.post('/payment/notify', async (req, res) => {
-  console.log("notify triggered")
-  try {
-    const result = await alipaySdk.checkNotify(req.body);
-    if (result.trade_status === 'TRADE_SUCCESS') {
-      // 更新数据库订单状态
-      const {
-        out_trade_no,    // 商户订单号（你系统生成的订单号）
-        trade_no,        // 支付宝交易号
-        total_amount,    // 订单金额
-        buyer_id,        // 买家支付宝用户ID
-        seller_id,       // 卖家支付宝用户ID
-        invoice_amount   // 开票金额
-      } = result;
-      console.log(result);
-      res.send('success'); // 必须返回success告知支付宝已处理
-    } else {
-      console.log("payment failed!");
-      res.send('failure');
-    }
-  } catch (error) {
-    res.status(500).send('error');
-  }
 });
 
 module.exports = router;
