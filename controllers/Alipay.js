@@ -58,6 +58,7 @@ router.post('/payment/:platform', async (req, res) => {
 
 // 支付宝异步通知（需公网可访问）
 router.post('/payment/notify', async (req, res) => {
+  console.log("notify triggered")
   try {
     const result = await alipaySdk.checkNotify(req.body);
     if (result.trade_status === 'TRADE_SUCCESS') {
