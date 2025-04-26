@@ -1,6 +1,13 @@
 const { AlipaySdk } = require('alipay-sdk');
 const express = require('express');
 const router = express.Router();
+const pool = require('./DB');
+const SET_STATUS_PAYED= `
+    UPDATE userinfo
+    SET paid=true
+    where order_number = $1
+  `;
+
 
 const alipaySdk = new AlipaySdk({
   appId: process.env.ALIPAY_APPID,
@@ -25,12 +32,16 @@ router.post('/payment/notify', async (req, res) => {
 
     // 2. 解析支付宝通知参数
     const result = req.body;
-    console.log("支付宝通知参数:", result);
 
     // 3. 处理交易成功逻辑
     if (result.trade_status === 'TRADE_SUCCESS') {
       const { out_trade_no, trade_no } = result;
       console.log("订单支付成功，订单号:", out_trade_no);
+      // 4. 更新数据库状态
+      const client = await pool.connect();
+      await client.query(SQL.SET_STATUS_PAYED, [
+        out_trade_no
+      ]);
       res.send('success');
     } else {
       console.log("交易未成功，状态:", result.trade_status);
