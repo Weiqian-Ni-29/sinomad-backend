@@ -28,14 +28,16 @@ router.post('/payment/notify', async (req, res) => {
         buyer_id,        // 买家支付宝用户ID
         seller_id,       // 卖家支付宝用户ID
         invoice_amount   // 开票金额
-      } = res;
-      console.log(res);
+      } = result;
+      console.log(result);
       res.send('success'); // 必须返回success告知支付宝已处理
     } else {
       console.log("payment failed!");
       res.send('failure');
     }
   } catch (error) {
+    console.log("an error happened during payment")
+    console.log(error);
     res.status(500).send('error');
   }
 });
