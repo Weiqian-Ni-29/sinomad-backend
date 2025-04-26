@@ -15,29 +15,29 @@ const alipaySdk = new AlipaySdk({
 
 // 支付宝异步通知（需公网可访问）
 router.post('/payment/notify', async (req, res) => {
-  console.log("notify triggered")
+  console.log("notify triggered");
   try {
-    const result = await alipaySdk.checkNotifySign(req.body);
-    console.log("res:" + result);
+    // 1. 验签（确保通知来自支付宝）
+    const isSignatureValid = await alipaySdk.checkNotifySign(req.body);
+    if (!isSignatureValid) {
+      throw new Error("支付宝通知验签失败");
+    }
+
+    // 2. 解析支付宝通知参数
+    const result = alipaySdk.decryptNotifyParams(req.body);
+    console.log("支付宝通知参数:", result);
+
+    // 3. 处理交易成功逻辑
     if (result.trade_status === 'TRADE_SUCCESS') {
-      // 更新数据库订单状态
-      const {
-        out_trade_no,    // 商户订单号（你系统生成的订单号）
-        trade_no,        // 支付宝交易号
-        total_amount,    // 订单金额
-        buyer_id,        // 买家支付宝用户ID
-        seller_id,       // 卖家支付宝用户ID
-        invoice_amount   // 开票金额
-      } = result;
-      console.log(result);
-      res.send('success'); // 必须返回success告知支付宝已处理
+      const { out_trade_no, trade_no } = result;
+      console.log("订单支付成功，订单号:", out_trade_no);
+      res.send('success');
     } else {
-      console.log("payment failed!");
+      console.log("交易未成功，状态:", result.trade_status);
       res.send('failure');
     }
   } catch (error) {
-    console.log("an error happened during payment")
-    console.log(error);
+    console.error("支付宝通知处理失败:", error);
     res.status(500).send('error');
   }
 });
