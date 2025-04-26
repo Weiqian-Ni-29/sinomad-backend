@@ -23,6 +23,7 @@ router.post('/payment/notify', async (req, res) => {
       throw new Error("支付宝通知验签失败");
     }
 
+    console.log("req.body" + req.body);
     // 2. 解析支付宝通知参数
     const result = alipaySdk.decryptNotifyParams(req.body);
     console.log("支付宝通知参数:", result);
