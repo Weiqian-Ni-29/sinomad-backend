@@ -6,8 +6,8 @@ const alipaySdk = new AlipaySdk({
   appId: process.env.ALIPAY_APPID,
   privateKey: process.env.ALIPAY_APP_PRIVATE_KEY,
   alipayPublicKey: process.env.ALIPAY_PUBLIC_KEY,
-  gateway: 	'https://openapi-sandbox.dl.alipaydev.com/gateway.do',
-  // gateway: 'https://openapi.alipay.com/gateway.do',
+  // gateway: 	'https://openapi-sandbox.dl.alipaydev.com/gateway.do',
+  gateway: 'https://openapi.alipay.com/gateway.do',
   sandbox: true,
   signType:'RSA2'
 });
@@ -62,7 +62,15 @@ router.post('/payment/notify', async (req, res) => {
     const result = await alipaySdk.checkNotify(req.body);
     if (result.trade_status === 'TRADE_SUCCESS') {
       // 更新数据库订单状态
-      console.log("notified triggered!");
+      const {
+        out_trade_no,    // 商户订单号（你系统生成的订单号）
+        trade_no,        // 支付宝交易号
+        total_amount,    // 订单金额
+        buyer_id,        // 买家支付宝用户ID
+        seller_id,       // 卖家支付宝用户ID
+        invoice_amount   // 开票金额
+      } = result;
+      console.log(result);
       res.send('success'); // 必须返回success告知支付宝已处理
     } else {
       console.log("payment failed!");
