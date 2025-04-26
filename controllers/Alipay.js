@@ -18,6 +18,7 @@ router.post('/payment/notify', async (req, res) => {
   console.log("notify triggered")
   try {
     const result = await alipaySdk.checkNotify(req.body);
+    console.log("res:" + result);
     if (result.trade_status === 'TRADE_SUCCESS') {
       // 更新数据库订单状态
       const {
@@ -27,8 +28,8 @@ router.post('/payment/notify', async (req, res) => {
         buyer_id,        // 买家支付宝用户ID
         seller_id,       // 卖家支付宝用户ID
         invoice_amount   // 开票金额
-      } = result;
-      console.log(result);
+      } = res;
+      console.log(res);
       res.send('success'); // 必须返回success告知支付宝已处理
     } else {
       console.log("payment failed!");
