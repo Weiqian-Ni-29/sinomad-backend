@@ -9,6 +9,15 @@ const ROUTE_STARTUP = JSON.parse(process.env.ROUTE_STARTUP_NUM || '{}');
 const routeMaxPeople = new Map(Object.entries(ROUTE_CONFIG));
 const routeStartUpNum = new Map(Object.entries(ROUTE_STARTUP));
 
+const ROUTE_TIME = JSON.parse(process.env.ROUTE_TIME);
+const routeTimeFilter = new Map(Object.entries(ROUTE_TIME));
+
+function composeRouteSQL(route) {
+  return SQL.GET_AVAILABILITY 
+    + "AND EXTRACT(DOW FROM departure_time AT TIME ZONE 'Asia/Shanghai') IN "
+    + routeTimeFilter.get(route);
+}
+
 // 改进2: SQL 语句集中管理
 const SQL = {
   GET_AVAILABILITY: `
@@ -114,7 +123,9 @@ router.get('/available-dates-n-vacancies', async (req, res) => {
     }
 
     // 修改点4：传递两个参数（route 和 maxPeople）
-    const { rows } = await pool.query(SQL.GET_AVAILABILITY, [route, maxPeople]);
+    const { rows } = await pool.query(
+      composeRouteSQL(route), 
+      [route, maxPeople]);
     
     const startUpNum = routeStartUpNum.get(route);
 
