@@ -17,6 +17,9 @@ const SQL = {
     WHERE route = $1 
       AND departure_time BETWEEN NOW() AND NOW() + INTERVAL '1 month'
       AND num_of_travelers < $2 
+      AND NOW() AT TIME ZONE 'Asia/Shanghai' < (
+      departure_time - INTERVAL '12 HOURS'
+    )
   `,
 
   CHECK_STOCK: `
